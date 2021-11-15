@@ -1,0 +1,176 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "IPRuler public API",
+    "version": "2.0",
+    "contact": {
+      "name": "Pavel Fiskovich",
+      "url": "https://blog.bullgare.com/2020/07/complete-list-of-swagger-options-to-protobuf-file"
+    }
+  },
+  "tags": [
+    {
+      "name": "IPRulerService"
+    }
+  ],
+  "schemes": [
+    "http"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v2/ipruler/add": {
+      "post": {
+        "summary": "AddIPRule добавить ip rule",
+        "operationId": "IPRulerService_AddIPRule",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/iprulerAddIPRuleRequest"
+            }
+          }
+        ],
+        "tags": [
+          "IPRulerService"
+        ]
+      }
+    },
+    "/v2/ipruler/remove": {
+      "post": {
+        "summary": "RemoveIPRule удалить ip rule",
+        "operationId": "IPRulerService_RemoveIPRule",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/iprulerRemoveIPRuleRequest"
+            }
+          }
+        ],
+        "tags": [
+          "IPRulerService"
+        ]
+      }
+    },
+    "/v2/ipruler/state": {
+      "get": {
+        "summary": "GetState вернуть все ip rules",
+        "operationId": "IPRulerService_GetState",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/iprulerGetStateResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "IPRulerService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "iprulerAddIPRuleRequest": {
+      "type": "object",
+      "properties": {
+        "tunDestIP": {
+          "type": "string"
+        }
+      },
+      "title": "AddIPRuleRequest добавить ip rule"
+    },
+    "iprulerGetStateResponse": {
+      "type": "object",
+      "properties": {
+        "fwmarks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "int64"
+          }
+        }
+      },
+      "title": "GetStateResponse выдаем все ip rules"
+    },
+    "iprulerRemoveIPRuleRequest": {
+      "type": "object",
+      "properties": {
+        "tunDestIP": {
+          "type": "string"
+        }
+      },
+      "title": "RemoveIPRuleRequest удалить ip rule"
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    }
+  }
+}
