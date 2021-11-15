@@ -16,6 +16,8 @@ import (
 	"github.com/gradusp/go-platform/server"
 	grpcRt "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -81,6 +83,10 @@ func (srv *iprulerService) RegisterProxyGW(ctx context.Context, mux *grpcRt.Serv
 }
 
 func (srv *iprulerService) AddIPRule(ctx context.Context, req *ipruler.AddIPRuleRequest) (resp *emptypb.Empty, err error) {
+	destIP := req.GetTunDestIP()
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("TunDestIP", destIP))
+
 	var leave func()
 	if leave, err = srv.enter(ctx); err != nil {
 		return
@@ -90,12 +96,12 @@ func (srv *iprulerService) AddIPRule(ctx context.Context, req *ipruler.AddIPRule
 		err = srv.correctError(err)
 	}()
 
-	destIP := req.GetTunDestIP()
 	var hcTunDestNetIP net.IP
 	if hcTunDestNetIP, _, err = net.ParseCIDR(destIP + mask32); err != nil {
 		return
 	}
 	tableAndMark := netPrivate.IPType(hcTunDestNetIP).Int()
+	span.SetAttributes(attribute.Int64("TableAndMark", tableAndMark))
 	err = srv.enumRules(func(rule netlink.Rule) error {
 		if int64(rule.Table) == tableAndMark {
 			return status.Errorf(codes.AlreadyExists, "the Rule with Table(%v) always exists", tableAndMark)
@@ -118,6 +124,10 @@ func (srv *iprulerService) AddIPRule(ctx context.Context, req *ipruler.AddIPRule
 }
 
 func (srv *iprulerService) RemoveIPRule(ctx context.Context, req *ipruler.RemoveIPRuleRequest) (resp *emptypb.Empty, err error) {
+	destIP := req.GetTunDestIP()
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("TunDestIP", destIP))
+
 	var leave func()
 	if leave, err = srv.enter(ctx); err != nil {
 		return
@@ -127,12 +137,12 @@ func (srv *iprulerService) RemoveIPRule(ctx context.Context, req *ipruler.Remove
 		err = srv.correctError(err)
 	}()
 
-	destIP := req.GetTunDestIP()
 	var hcTunDestNetIP net.IP
 	if hcTunDestNetIP, _, err = net.ParseCIDR(destIP + mask32); err != nil {
 		return
 	}
 	tableAndMark := netPrivate.IPType(hcTunDestNetIP).Int()
+	span.SetAttributes(attribute.Int64("TableAndMark", tableAndMark))
 	success := errors.New("s")
 	err = srv.enumRules(func(rule netlink.Rule) error {
 		if int64(rule.Table) == tableAndMark {
