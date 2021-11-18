@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"net"
+	"net/url"
 	"runtime"
 	"sort"
 	"sync"
@@ -210,12 +211,26 @@ func (srv *iprulerService) enumRules(c enumRulesConsumer) error {
 }
 
 func (srv *iprulerService) correctError(err error) error {
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			err = status.FromContextError(err).Err()
-		}
-		if status.Code(errors.Cause(err)) == codes.Unknown {
-			err = status.Errorf(codes.Internal, "%v", err)
+	if err != nil && status.Code(err) == codes.Unknown {
+		switch errors.Cause(err) {
+		case context.DeadlineExceeded:
+			return status.New(codes.DeadlineExceeded, err.Error()).Err()
+		case context.Canceled:
+			return status.New(codes.Canceled, err.Error()).Err()
+		default:
+			if e := new(url.Error); errors.As(err, &e) {
+				switch errors.Cause(e.Err) {
+				case context.Canceled:
+					return status.New(codes.Canceled, err.Error()).Err()
+				case context.DeadlineExceeded:
+					return status.New(codes.DeadlineExceeded, err.Error()).Err()
+				default:
+					if e.Timeout() {
+						return status.New(codes.DeadlineExceeded, err.Error()).Err()
+					}
+				}
+			}
+			err = status.New(codes.Internal, err.Error()).Err()
 		}
 	}
 	return err
