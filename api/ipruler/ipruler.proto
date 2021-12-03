@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package crispy.ipruler;
+option go_package = "/ipruler";
+
+//import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "IPRuler public API";
+    version: "2.0";
+    contact: {
+      name: "Pavel Fiskovich";
+      url: "https://blog.bullgare.com/2020/07/complete-list-of-swagger-options-to-protobuf-file";
+    };
+  };
+  schemes: [HTTP];
+  consumes: "application/json";
+  produces: "application/json";
+};
+
+//IPRulerService сервис IPRuler
+service IPRulerService {
+  //AddIPRule добавить ip rule
+  rpc AddIPRule(AddIPRuleRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v2/ipruler/add"
+      body: "*"
+    };
+  }
+
+  //RemoveIPRule удалить ip rule
+  rpc RemoveIPRule(RemoveIPRuleRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v2/ipruler/remove"
+      body: "*"
+    };
+  }
+
+  //GetState вернуть все ip rules
+  rpc GetState(google.protobuf.Empty) returns (GetStateResponse) {
+    option (google.api.http) = {
+      get: "/v2/ipruler/state"
+    };
+  }
+}
+
+//AddIPRuleRequest добавить ip rule
+message AddIPRuleRequest {
+  string tunDestIP = 1;
+}
+
+//RemoveIPRuleRequest удалить ip rule
+message RemoveIPRuleRequest {
+  string tunDestIP = 1;
+}
+
+//GetStateResponse выдаем все ip rules
+message GetStateResponse {
+  repeated int64 fwmarks = 1;
+}
+
