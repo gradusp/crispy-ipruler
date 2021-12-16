@@ -105,8 +105,8 @@ func (srv *iprulerService) AddIPRule(ctx context.Context, req *ipruler.AddIPRule
 	tableAndMark := netPrivate.IPType(hcTunDestNetIP).Int()
 	span.SetAttributes(attribute.Int64("TableAndMark", tableAndMark))
 	err = srv.enumRules(func(rule netlink.Rule) error {
-		if int64(rule.Table) == tableAndMark {
-			return status.Errorf(codes.AlreadyExists, "the Rule with Table(%v) always exists", tableAndMark)
+		if int64(rule.Table) == tableAndMark && int64(rule.Mark) == tableAndMark {
+			return status.Errorf(codes.AlreadyExists, "the rule with table '%v' always exists", tableAndMark)
 		}
 		return nil
 	})
@@ -117,7 +117,7 @@ func (srv *iprulerService) AddIPRule(ctx context.Context, req *ipruler.AddIPRule
 	rule.Mark = int(tableAndMark)
 	rule.Table = int(tableAndMark)
 	if err = netlink.RuleAdd(rule); err != nil {
-		err = errors.WithMessagef(err, "netlink/RuleAdd table:%v", tableAndMark)
+		err = errors.WithMessagef(err, "netlink/RuleAdd table '%v'", tableAndMark)
 	}
 	if err == nil {
 		resp = new(emptypb.Empty)
@@ -148,18 +148,16 @@ func (srv *iprulerService) RemoveIPRule(ctx context.Context, req *ipruler.Remove
 	span.SetAttributes(attribute.Int64("TableAndMark", tableAndMark))
 	success := errors.New("s")
 	err = srv.enumRules(func(rule netlink.Rule) error {
-		if int64(rule.Table) == tableAndMark {
-			err = netlink.RuleDel(&rule)
-			if err != nil {
-				err = errors.WithMessagef(err, "netlink/RuleDel(table:%v)", tableAndMark)
-			} else {
-				err = success
-			}
+		if !(int64(rule.Table) == tableAndMark && int64(rule.Mark) == tableAndMark) {
+			return nil
 		}
-		return nil
+		if e := netlink.RuleDel(&rule); e != nil {
+			return errors.WithMessagef(e, "netlink/RuleDel table '%v'", tableAndMark)
+		}
+		return success
 	})
 	if err == nil {
-		err = status.Errorf(codes.NotFound, "no rule found for table %v", tableAndMark)
+		err = status.Errorf(codes.NotFound, "no rule found for table '%v'", tableAndMark)
 	} else if errors.Is(err, success) {
 		resp = new(emptypb.Empty)
 		err = nil
