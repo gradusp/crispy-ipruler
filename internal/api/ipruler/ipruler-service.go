@@ -84,10 +84,6 @@ func (srv *iprulerService) RegisterProxyGW(ctx context.Context, mux *grpcRt.Serv
 }
 
 func (srv *iprulerService) AddIPRule(ctx context.Context, req *ipruler.AddIPRuleRequest) (resp *emptypb.Empty, err error) {
-	destIP := req.GetTunDestIP()
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("TunDestIP", destIP))
-
 	var leave func()
 	if leave, err = srv.enter(ctx); err != nil {
 		return
@@ -97,15 +93,20 @@ func (srv *iprulerService) AddIPRule(ctx context.Context, req *ipruler.AddIPRule
 		err = srv.correctError(err)
 	}()
 
+	destIP := req.GetTunDestIP()
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("TunDestIP", destIP))
+
 	var hcTunDestNetIP net.IP
 	if hcTunDestNetIP, _, err = net.ParseCIDR(destIP + mask32); err != nil {
+		err = errors.WithMessagef(err, "net.ParseCIDR(%s)", destIP+mask32)
 		return
 	}
 	tableAndMark := netPrivate.IPType(hcTunDestNetIP).Int()
 	span.SetAttributes(attribute.Int64("TableAndMark", tableAndMark))
 	err = srv.enumRules(func(rule netlink.Rule) error {
-		if int64(rule.Table) == tableAndMark {
-			return status.Errorf(codes.AlreadyExists, "the Rule with Table(%v) always exists", tableAndMark)
+		if int64(rule.Table) == tableAndMark && int64(rule.Mark) == tableAndMark {
+			return status.Errorf(codes.AlreadyExists, "the rule with table '%v' always exists", tableAndMark)
 		}
 		return nil
 	})
@@ -116,19 +117,15 @@ func (srv *iprulerService) AddIPRule(ctx context.Context, req *ipruler.AddIPRule
 	rule.Mark = int(tableAndMark)
 	rule.Table = int(tableAndMark)
 	if err = netlink.RuleAdd(rule); err != nil {
-		err = errors.Wrapf(err, "netlink.RuleAdd(Table:%v)", tableAndMark)
+		err = errors.WithMessagef(err, "netlink/RuleAdd table '%v'", tableAndMark)
 	}
 	if err == nil {
 		resp = new(emptypb.Empty)
 	}
-	return //nolint:nakedret
+	return resp, err
 }
 
 func (srv *iprulerService) RemoveIPRule(ctx context.Context, req *ipruler.RemoveIPRuleRequest) (resp *emptypb.Empty, err error) {
-	destIP := req.GetTunDestIP()
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("TunDestIP", destIP))
-
 	var leave func()
 	if leave, err = srv.enter(ctx); err != nil {
 		return
@@ -138,31 +135,34 @@ func (srv *iprulerService) RemoveIPRule(ctx context.Context, req *ipruler.Remove
 		err = srv.correctError(err)
 	}()
 
+	destIP := req.GetTunDestIP()
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("TunDestIP", destIP))
+
 	var hcTunDestNetIP net.IP
 	if hcTunDestNetIP, _, err = net.ParseCIDR(destIP + mask32); err != nil {
+		err = errors.WithMessagef(err, "net.ParseCIDR(%s)", destIP+mask32)
 		return
 	}
 	tableAndMark := netPrivate.IPType(hcTunDestNetIP).Int()
 	span.SetAttributes(attribute.Int64("TableAndMark", tableAndMark))
 	success := errors.New("s")
 	err = srv.enumRules(func(rule netlink.Rule) error {
-		if int64(rule.Table) == tableAndMark {
-			err = netlink.RuleDel(&rule)
-			if err != nil {
-				err = errors.Wrapf(err, "netlink.RuleDel(by Table:%v)", tableAndMark)
-			} else {
-				err = success
-			}
+		if !(int64(rule.Table) == tableAndMark && int64(rule.Mark) == tableAndMark) {
+			return nil
 		}
-		return nil
+		if e := netlink.RuleDel(&rule); e != nil {
+			return errors.WithMessagef(e, "netlink/RuleDel table '%v'", tableAndMark)
+		}
+		return success
 	})
 	if err == nil {
-		err = status.Errorf(codes.NotFound, "no rule found for Table(%v)", tableAndMark)
+		err = status.Errorf(codes.NotFound, "no rule found for table '%v'", tableAndMark)
 	} else if errors.Is(err, success) {
 		resp = new(emptypb.Empty)
 		err = nil
 	}
-	return //nolint:nakedret
+	return resp, err
 }
 
 func (srv *iprulerService) GetState(ctx context.Context, _ *emptypb.Empty) (resp *ipruler.GetStateResponse, err error) {
@@ -174,13 +174,13 @@ func (srv *iprulerService) GetState(ctx context.Context, _ *emptypb.Empty) (resp
 		leave()
 		err = srv.correctError(err)
 	}()
+
 	var rules netlink.Rules
 	if rules, err = netlink.RuleList(family); err != nil {
-		err = errors.Wrapf(err, "netlink.RuleList -> %v", err)
+		err = errors.WithMessage(err, "netlink/RuleList")
 		return
 	}
 	resp = new(ipruler.GetStateResponse)
-	resp.Fwmarks = append(resp.Fwmarks, 0)
 	for i := range rules {
 		if r := rules[i]; r.Mark > 0 {
 			resp.Fwmarks = append(resp.Fwmarks, int64(r.Mark))
@@ -192,15 +192,13 @@ func (srv *iprulerService) GetState(ctx context.Context, _ *emptypb.Empty) (resp
 	_ = slice.DedupSlice(&resp.Fwmarks, func(i, j int) bool {
 		return resp.Fwmarks[i] == resp.Fwmarks[j]
 	})
-	return
+	return resp, nil
 }
 
 func (srv *iprulerService) enumRules(c enumRulesConsumer) error {
-	const api = "ipruler/enumRules"
-
 	list, err := netlink.RuleList(family)
 	if err != nil {
-		return errors.Wrapf(err, "%s: netlink.RuleList", api)
+		return errors.WithMessage(err, "netlink/RuleList")
 	}
 	for i := range list {
 		if err = c(list[i]); err != nil {
